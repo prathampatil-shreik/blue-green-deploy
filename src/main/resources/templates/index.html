@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>DevOps Calculator</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}"/>
+</head>
+<body>
+
+<div class="page-wrapper">
+
+    <header class="app-header">
+        <h1 class="app-title">&#9881; DEVOPS CALCULATOR</h1>
+        <div class="env-badges">
+            <span class="badge env-badge"
+                  th:classappend="${appEnv == 'GREEN'} ? 'green' : 'blue'"
+                  th:text="'Environment: ' + ${appEnv}">Environment: BLUE</span>
+            <span class="badge version-badge" th:text="'Version: ' + ${appVersion}">Version: v1.0</span>
+            <span class="badge status-badge"
+                  th:classappend="${status == 'HEALTHY'} ? 'healthy' : 'unhealthy'"
+                  th:text="'Status: ' + ${status}">Status: HEALTHY</span>
+        </div>
+    </header>
+
+    <main class="calculator-wrapper">
+        <div class="calculator">
+
+            <div class="display-panel">
+                <div class="expression" id="expression">&nbsp;</div>
+                <div class="display" id="display">0</div>
+            </div>
+
+            <div class="buttons">
+                <!-- Row 1 -->
+                <button class="btn btn-fn" onclick="clearAll()">AC</button>
+                <button class="btn btn-fn" onclick="toggleSign()">+/&#8722;</button>
+                <button class="btn btn-fn" onclick="percentage()">%</button>
+                <button class="btn btn-op" onclick="setOperator('/')">&#247;</button>
+
+                <!-- Row 2 -->
+                <button class="btn btn-num" onclick="appendDigit('7')">7</button>
+                <button class="btn btn-num" onclick="appendDigit('8')">8</button>
+                <button class="btn btn-num" onclick="appendDigit('9')">9</button>
+                <button class="btn btn-op" onclick="setOperator('*')">&#215;</button>
+
+                <!-- Row 3 -->
+                <button class="btn btn-num" onclick="appendDigit('4')">4</button>
+                <button class="btn btn-num" onclick="appendDigit('5')">5</button>
+                <button class="btn btn-num" onclick="appendDigit('6')">6</button>
+                <button class="btn btn-op" onclick="setOperator('-')">&#8722;</button>
+
+                <!-- Row 4 -->
+                <button class="btn btn-num" onclick="appendDigit('1')">1</button>
+                <button class="btn btn-num" onclick="appendDigit('2')">2</button>
+                <button class="btn btn-num" onclick="appendDigit('3')">3</button>
+                <button class="btn btn-op" onclick="setOperator('+')">+</button>
+
+                <!-- Row 5 -->
+                <button class="btn btn-num btn-zero" onclick="appendDigit('0')">0</button>
+                <button class="btn btn-num" onclick="appendDot()">.</button>
+                <button class="btn btn-fn" onclick="backspace()">&#8592;</button>
+                <button class="btn btn-eq" onclick="calculate()">=</button>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <p>Blue-Green Deployment &mdash; Stage 1 &mdash; AWS ECS Fargate</p>
+    </footer>
+
+</div>
+
+<script th:src="@{/js/calculator.js}"></script>
+</body>
+</html>

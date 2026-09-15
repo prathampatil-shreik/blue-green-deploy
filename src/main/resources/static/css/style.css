@@ -1,0 +1,200 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg-page:        #0f1117;
+    --bg-calc:        #1c1e26;
+    --bg-display:     #13151c;
+    --bg-num:         #2a2d3a;
+    --bg-fn:          #3a3d4e;
+    --bg-op:          #f59e0b;
+    --bg-eq:          #3b82f6;
+    --bg-num-hover:   #363a4d;
+    --bg-fn-hover:    #484c62;
+    --bg-op-hover:    #fbbf24;
+    --bg-eq-hover:    #60a5fa;
+    --text-primary:   #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-op:        #1c1e26;
+    --radius-calc:    20px;
+    --radius-btn:     12px;
+    --shadow-calc:    0 25px 60px rgba(0,0,0,0.6);
+}
+
+body {
+    background: var(--bg-page);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    color: var(--text-primary);
+}
+
+/* ── Page Layout ── */
+.page-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    gap: 1.5rem;
+}
+
+/* ── Header ── */
+.app-header {
+    text-align: center;
+}
+
+.app-title {
+    font-size: clamp(1.2rem, 3vw, 1.6rem);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+}
+
+.env-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.badge {
+    padding: 0.3rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.env-badge.blue    { background: #1d4ed8; color: #fff; }
+.env-badge.green   { background: #15803d; color: #fff; }
+.version-badge     { background: #374151; color: #d1d5db; }
+.status-badge.healthy   { background: #14532d; color: #86efac; }
+.status-badge.unhealthy { background: #7f1d1d; color: #fca5a5; }
+
+/* ── Calculator Shell ── */
+.calculator-wrapper {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.calculator {
+    background: var(--bg-calc);
+    border-radius: var(--radius-calc);
+    box-shadow: var(--shadow-calc);
+    padding: 1.25rem;
+    width: 100%;
+    max-width: 340px;
+}
+
+/* ── Display ── */
+.display-panel {
+    background: var(--bg-display);
+    border-radius: 12px;
+    padding: 1rem 1.25rem 0.75rem;
+    margin-bottom: 1rem;
+    min-height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+.expression {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    min-height: 1.2em;
+    word-break: break-all;
+    text-align: right;
+}
+
+.display {
+    font-size: clamp(1.8rem, 8vw, 2.6rem);
+    font-weight: 300;
+    color: var(--text-primary);
+    word-break: break-all;
+    text-align: right;
+    line-height: 1.1;
+    transition: font-size 0.1s;
+}
+
+/* ── Button Grid ── */
+.buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.6rem;
+}
+
+.btn {
+    border: none;
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 500;
+    height: 64px;
+    transition: background 0.12s, transform 0.08s;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+.btn:active { transform: scale(0.93); }
+
+.btn-num {
+    background: var(--bg-num);
+    color: var(--text-primary);
+}
+.btn-num:hover { background: var(--bg-num-hover); }
+
+.btn-fn {
+    background: var(--bg-fn);
+    color: var(--text-primary);
+}
+.btn-fn:hover { background: var(--bg-fn-hover); }
+
+.btn-op {
+    background: var(--bg-op);
+    color: var(--text-op);
+    font-weight: 600;
+}
+.btn-op:hover  { background: var(--bg-op-hover); }
+.btn-op.active { background: #fff; color: var(--bg-op); }
+
+.btn-eq {
+    background: var(--bg-eq);
+    color: #fff;
+    font-weight: 600;
+}
+.btn-eq:hover { background: var(--bg-eq-hover); }
+
+/* Zero button spans 2 columns */
+.btn-zero {
+    grid-column: span 2;
+    text-align: left;
+    padding-left: 1.4rem;
+}
+
+/* ── Footer ── */
+.app-footer {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-align: center;
+}
+
+/* ── Responsive ── */
+@media (max-width: 400px) {
+    .calculator { padding: 1rem; }
+    .btn { height: 56px; font-size: 1rem; }
+    .buttons { gap: 0.45rem; }
+}
+
+@media (min-width: 768px) {
+    .calculator { max-width: 360px; }
+    .btn { height: 70px; }
+}
