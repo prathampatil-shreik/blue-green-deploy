@@ -6,7 +6,7 @@
     <title>DevOps Calculator</title>
     <link rel="stylesheet" th:href="@{/css/style.css}"/>
 </head>
-<body>
+<body th:classappend="${appEnv == 'GREEN'} ? 'green-theme' : ''"
 
 <div class="page-wrapper">
 
@@ -67,7 +67,7 @@
     </main>
 
     <footer class="app-footer">
-        <p>Blue-Green Deployment &mdash; Stage 1 &mdash; AWS ECS Fargate</p>
+        <p>Blue-Green Deployment &mdash; <span th:text="${appEnv == 'GREEN'} ? 'Stage 2' : 'Stage 1'">Stage 1</span> &mdash; AWS ECS Fargate</p>
     </footer>
 
 </div>
