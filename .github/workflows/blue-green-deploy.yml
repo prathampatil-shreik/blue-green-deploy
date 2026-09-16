@@ -147,7 +147,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::925213028316:role/GitHubActions-BlueGreenDeployment
           role-session-name: GitHubActions-BlueGreen-Build
           aws-region: ${{ env.AWS_REGION }}
 
@@ -226,7 +226,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::925213028316:role/GitHubActions-BlueGreenDeployment
           role-session-name: GitHubActions-BlueGreen-Deploy
           aws-region: ${{ env.AWS_REGION }}
 
@@ -458,7 +458,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::925213028316:role/GitHubActions-BlueGreenDeployment
           role-session-name: GitHubActions-BlueGreen-Switch
           aws-region: ${{ env.AWS_REGION }}
 
@@ -676,7 +676,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::925213028316:role/GitHubActions-BlueGreenDeployment
           role-session-name: GitHubActions-BlueGreen-Rollback
           aws-region: ${{ env.AWS_REGION }}
 
