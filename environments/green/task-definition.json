@@ -31,7 +31,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-group":         "/ecs/devops-calculator-green",
-          "awslogs-region":        "<AWS_REGION>",
+          "awslogs-region":        "ap-south-1",
           "awslogs-stream-prefix": "ecs"
         }
       }
