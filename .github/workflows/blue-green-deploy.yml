@@ -4,44 +4,68 @@ on:
   push:
     branches:
       - main
+
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment (blue or green)'
+        description: "Target environment (blue or green)"
         required: true
-        default: 'green'
+        default: "green"
         type: choice
         options:
           - blue
           - green
+
       simulate_failure:
-        description: 'Simulate failure for rollback demo'
+        description: "Simulate failure for rollback demo"
         required: false
-        default: 'false'
+        default: "false"
         type: choice
         options:
-          - 'false'
-          - 'true'
+          - "false"
+          - "true"
+
+
+# ============================================================
+# GitHub Actions permissions
+# OIDC authentication requires id-token: write
+# ============================================================
+
+permissions:
+  contents: read
+  id-token: write
+
+
+# ============================================================
+# Global environment variables
+# ============================================================
 
 env:
-  AWS_REGION:         ap-south-1
-  ECR_REGISTRY:       ${{ secrets.ECR_REGISTRY }}
-  ECR_REPOSITORY:     ${{ secrets.ECR_REPOSITORY }}
-  ECS_CLUSTER:        ${{ secrets.ECS_CLUSTER }}
-  ECS_SERVICE_BLUE:   ${{ secrets.ECS_SERVICE_BLUE }}
-  ECS_SERVICE_GREEN:  ${{ secrets.ECS_SERVICE_GREEN }}
-  TASK_DEF_BLUE:      ${{ secrets.TASK_DEF_BLUE }}
-  TASK_DEF_GREEN:     ${{ secrets.TASK_DEF_GREEN }}
-  ALB_TG_BLUE_ARN:    ${{ secrets.ALB_TG_BLUE_ARN }}
-  ALB_TG_GREEN_ARN:   ${{ secrets.ALB_TG_GREEN_ARN }}
-  ALB_LISTENER_ARN:   ${{ secrets.ALB_LISTENER_ARN }}
-  APP_URL:            ${{ secrets.APP_URL }}
+  AWS_REGION: ap-south-1
+
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+
+  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+  ECS_SERVICE_BLUE: ${{ secrets.ECS_SERVICE_BLUE }}
+  ECS_SERVICE_GREEN: ${{ secrets.ECS_SERVICE_GREEN }}
+
+  TASK_DEF_BLUE: ${{ secrets.TASK_DEF_BLUE }}
+  TASK_DEF_GREEN: ${{ secrets.TASK_DEF_GREEN }}
+
+  ALB_TG_BLUE_ARN: ${{ secrets.ALB_TG_BLUE_ARN }}
+  ALB_TG_GREEN_ARN: ${{ secrets.ALB_TG_GREEN_ARN }}
+  ALB_LISTENER_ARN: ${{ secrets.ALB_LISTENER_ARN }}
+
+  APP_URL: ${{ secrets.APP_URL }}
+
 
 jobs:
 
-  # ─────────────────────────────────────────────
-  # JOB 1 — Build & Push image to ECR
-  # ─────────────────────────────────────────────
+  # ==========================================================
+  # JOB 1 — Build & Push Docker image to Amazon ECR
+  # ==========================================================
+
   build:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
@@ -51,280 +75,703 @@ jobs:
       environment: ${{ steps.resolve_env.outputs.environment }}
 
     steps:
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
+
       - name: Checkout code
         uses: actions/checkout@v4
+
+
+      # --------------------------------------------------------
+      # Java setup
+      # --------------------------------------------------------
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          java-version: "17"
+          distribution: "temurin"
           cache: maven
 
+
+      # --------------------------------------------------------
+      # Build application
+      # --------------------------------------------------------
+
       - name: Build JAR
-        run: mvn package -DskipTests -q
+        run: |
+          mvn package -DskipTests -q
+
+
+      # --------------------------------------------------------
+      # Resolve target environment
+      # --------------------------------------------------------
 
       - name: Resolve target environment
         id: resolve_env
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
           else
-            echo "environment=green" >> $GITHUB_OUTPUT
+            echo "environment=green" >> "$GITHUB_OUTPUT"
           fi
+
+
+      # --------------------------------------------------------
+      # Generate Docker image tag
+      # --------------------------------------------------------
 
       - name: Set image tag
         id: meta
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           ENV="${{ steps.resolve_env.outputs.environment }}"
+
           TAG="${ENV}-${SHORT_SHA}"
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Image tag: ${TAG}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          echo "============================================"
+          echo "Environment : ${ENV}"
+          echo "Image tag   : ${TAG}"
+          echo "Commit      : ${{ github.sha }}"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Configure AWS using GitHub OIDC
+      # --------------------------------------------------------
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-session-name: GitHubActions-BlueGreen-Build
+          aws-region: ${{ env.AWS_REGION }}
+
+
+      # --------------------------------------------------------
+      # Verify AWS authentication
+      # --------------------------------------------------------
+
+      - name: Verify AWS identity
+        run: |
+          echo "Verifying AWS authentication..."
+          aws sts get-caller-identity
+
+
+      # --------------------------------------------------------
+      # Login to Amazon ECR
+      # --------------------------------------------------------
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+
+      # --------------------------------------------------------
+      # Build and push Docker image
+      # --------------------------------------------------------
+
       - name: Build & push Docker image
         run: |
-          IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ steps.meta.outputs.tag }}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "Pushed: $IMAGE"
 
-  # ─────────────────────────────────────────────
+          IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ steps.meta.outputs.tag }}"
+
+          echo "Building Docker image:"
+          echo "$IMAGE"
+
+          docker build -t "$IMAGE" .
+
+          echo "Pushing Docker image..."
+
+          docker push "$IMAGE"
+
+          echo "============================================"
+          echo "Docker image pushed successfully"
+          echo "Image: $IMAGE"
+          echo "============================================"
+
+
+  # ==========================================================
   # JOB 2 — Deploy to target environment
-  # ─────────────────────────────────────────────
+  # ==========================================================
+
   deploy:
     name: Deploy to ${{ needs.build.outputs.environment }}
+
     runs-on: ubuntu-latest
-    needs: build
+
+    needs:
+      - build
 
     environment:
       name: ${{ needs.build.outputs.environment }}
 
     steps:
+
+      # --------------------------------------------------------
+      # Checkout
+      # --------------------------------------------------------
+
       - name: Checkout code
         uses: actions/checkout@v4
+
+
+      # --------------------------------------------------------
+      # Configure AWS using GitHub OIDC
+      # --------------------------------------------------------
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-session-name: GitHubActions-BlueGreen-Deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+
+      # --------------------------------------------------------
+      # Verify AWS authentication
+      # --------------------------------------------------------
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+
+      # --------------------------------------------------------
+      # Set deployment variables
+      # --------------------------------------------------------
 
       - name: Set deployment variables
         id: vars
         run: |
+
           ENV="${{ needs.build.outputs.environment }}"
+
           IMAGE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ needs.build.outputs.image_tag }}"
-          echo "env=${ENV}" >> $GITHUB_OUTPUT
-          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+
+          echo "env=${ENV}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
 
           if [ "$ENV" = "blue" ]; then
-            echo "task_def=${TASK_DEF_BLUE}"       >> $GITHUB_OUTPUT
-            echo "service=${ECS_SERVICE_BLUE}"     >> $GITHUB_OUTPUT
-            echo "tg_arn=${ALB_TG_BLUE_ARN}"       >> $GITHUB_OUTPUT
-            echo "app_version=v1.0"                >> $GITHUB_OUTPUT
+
+            echo "task_def=${TASK_DEF_BLUE}" >> "$GITHUB_OUTPUT"
+            echo "service=${ECS_SERVICE_BLUE}" >> "$GITHUB_OUTPUT"
+            echo "tg_arn=${ALB_TG_BLUE_ARN}" >> "$GITHUB_OUTPUT"
+            echo "app_version=v1.0" >> "$GITHUB_OUTPUT"
+
           else
-            echo "task_def=${TASK_DEF_GREEN}"      >> $GITHUB_OUTPUT
-            echo "service=${ECS_SERVICE_GREEN}"    >> $GITHUB_OUTPUT
-            echo "tg_arn=${ALB_TG_GREEN_ARN}"      >> $GITHUB_OUTPUT
-            echo "app_version=v2.0"                >> $GITHUB_OUTPUT
+
+            echo "task_def=${TASK_DEF_GREEN}" >> "$GITHUB_OUTPUT"
+            echo "service=${ECS_SERVICE_GREEN}" >> "$GITHUB_OUTPUT"
+            echo "tg_arn=${ALB_TG_GREEN_ARN}" >> "$GITHUB_OUTPUT"
+            echo "app_version=v2.0" >> "$GITHUB_OUTPUT"
+
           fi
+
+
+          echo "============================================"
+          echo "Deployment variables"
+          echo "Environment : ${ENV}"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Create new ECS task definition
+      # --------------------------------------------------------
 
       - name: Update ECS task definition with new image
         id: task_def
         run: |
+
           SIMULATE="${{ github.event.inputs.simulate_failure || 'false' }}"
+
           ENV="${{ steps.vars.outputs.env }}"
           VERSION="${{ steps.vars.outputs.app_version }}"
           IMAGE="${{ steps.vars.outputs.image }}"
           TASK_DEF="${{ steps.vars.outputs.task_def }}"
 
+
+          echo "============================================"
+          echo "Preparing ECS task definition"
+          echo "Environment      : ${ENV}"
+          echo "Application      : ${VERSION}"
+          echo "Simulation       : ${SIMULATE}"
+          echo "Docker image     : ${IMAGE}"
+          echo "Task definition  : ${TASK_DEF}"
+          echo "============================================"
+
+
+          # ----------------------------------------------------
           # Fetch current task definition
+          # ----------------------------------------------------
+
           aws ecs describe-task-definition \
             --task-definition "$TASK_DEF" \
-            --query taskDefinition > task-def.json
+            --query taskDefinition \
+            > task-def.json
 
-          # Inject new image and environment variables
+
+          # ----------------------------------------------------
+          # Update image and environment variables
+          # ----------------------------------------------------
+
           NEW_TASK_DEF=$(cat task-def.json | python3 -c "
-          import json, sys
+
+          import json
+          import sys
+
           td = json.load(sys.stdin)
+
           for c in td['containerDefinitions']:
+
               c['image'] = '${IMAGE}'
-              env_map = {e['name']: e for e in c.get('environment', [])}
-              env_map['APP_ENV']           = {'name': 'APP_ENV',           'value': '${ENV^^}'}
-              env_map['APP_VERSION']       = {'name': 'APP_VERSION',       'value': '${VERSION}'}
-              env_map['SIMULATE_FAILURE']  = {'name': 'SIMULATE_FAILURE',  'value': '${SIMULATE}'}
+
+              env_map = {
+                  e['name']: e
+                  for e in c.get('environment', [])
+              }
+
+              env_map['APP_ENV'] = {
+                  'name': 'APP_ENV',
+                  'value': '${ENV^^}'
+              }
+
+              env_map['APP_VERSION'] = {
+                  'name': 'APP_VERSION',
+                  'value': '${VERSION}'
+              }
+
+              env_map['SIMULATE_FAILURE'] = {
+                  'name': 'SIMULATE_FAILURE',
+                  'value': '${SIMULATE}'
+              }
+
               c['environment'] = list(env_map.values())
-          # Remove fields not accepted by register-task-definition
-          for key in ['taskDefinitionArn','revision','status','requiresAttributes',
-                      'compatibilities','registeredAt','registeredBy']:
+
+
+          # Remove fields that cannot be passed to
+          # register-task-definition
+
+          for key in [
+              'taskDefinitionArn',
+              'revision',
+              'status',
+              'requiresAttributes',
+              'compatibilities',
+              'registeredAt',
+              'registeredBy'
+          ]:
+
               td.pop(key, None)
+
+
           print(json.dumps(td))
+
           ")
 
+
           echo "$NEW_TASK_DEF" > new-task-def.json
+
+
+          # ----------------------------------------------------
+          # Register new ECS task definition
+          # ----------------------------------------------------
 
           NEW_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://new-task-def.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
-          echo "new_task_arn=${NEW_ARN}" >> $GITHUB_OUTPUT
-          echo "Registered new task definition: ${NEW_ARN}"
+
+          echo "new_task_arn=${NEW_ARN}" >> "$GITHUB_OUTPUT"
+
+
+          echo "============================================"
+          echo "New task definition registered:"
+          echo "${NEW_ARN}"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Update ECS service
+      # --------------------------------------------------------
 
       - name: Deploy to ECS service
         run: |
+
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "${{ steps.vars.outputs.service }}" \
             --task-definition "${{ steps.task_def.outputs.new_task_arn }}" \
             --force-new-deployment
 
-          echo "Deployment triggered for service: ${{ steps.vars.outputs.service }}"
+
+          echo "============================================"
+          echo "ECS deployment triggered"
+          echo "Service: ${{ steps.vars.outputs.service }}"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Wait for ECS deployment
+      # --------------------------------------------------------
 
       - name: Wait for ECS service to stabilize
         run: |
+
           echo "Waiting for ECS service to become stable..."
+
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "${{ steps.vars.outputs.service }}"
-          echo "ECS service is stable."
 
-  # ─────────────────────────────────────────────
+
+          echo "============================================"
+          echo "ECS service is stable."
+          echo "============================================"
+
+
+  # ==========================================================
   # JOB 3 — Health check & traffic switch
-  # ─────────────────────────────────────────────
+  # ==========================================================
+
   health-check-and-switch:
+
     name: Health Check & Switch Traffic
+
     runs-on: ubuntu-latest
-    needs: [build, deploy]
+
+    needs:
+      - build
+      - deploy
 
     steps:
+
+      # --------------------------------------------------------
+      # Configure AWS using GitHub OIDC
+      # --------------------------------------------------------
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-session-name: GitHubActions-BlueGreen-Switch
+          aws-region: ${{ env.AWS_REGION }}
+
+
+      # --------------------------------------------------------
+      # Verify AWS authentication
+      # --------------------------------------------------------
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+
+      # --------------------------------------------------------
+      # Validate target group health
+      # --------------------------------------------------------
 
       - name: Run health checks
         id: health
         run: |
+
           ENV="${{ needs.build.outputs.environment }}"
-          TG_ARN=""
+
+
           if [ "$ENV" = "blue" ]; then
             TG_ARN="${ALB_TG_BLUE_ARN}"
           else
             TG_ARN="${ALB_TG_GREEN_ARN}"
           fi
 
-          echo "Checking target group health: $TG_ARN"
+
+          echo "============================================"
+          echo "Running Blue-Green health validation"
+          echo "Environment : ${ENV}"
+          echo "Target Group: ${TG_ARN}"
+          echo "============================================"
+
 
           MAX_RETRIES=10
           RETRY_INTERVAL=15
+
           HEALTHY=false
 
+
           for i in $(seq 1 $MAX_RETRIES); do
-            echo "Health check attempt $i / $MAX_RETRIES..."
+
+            echo ""
+            echo "Health check attempt ${i}/${MAX_RETRIES}"
+
 
             HEALTH=$(aws elbv2 describe-target-health \
               --target-group-arn "$TG_ARN" \
               --query 'TargetHealthDescriptions[*].TargetHealth.State' \
               --output text)
 
-            echo "Target states: $HEALTH"
 
-            if echo "$HEALTH" | grep -qv "unhealthy" && echo "$HEALTH" | grep -q "healthy"; then
-              echo "All targets are healthy."
+            echo "Target states: ${HEALTH}"
+
+
+            HEALTHY_COUNT=$(echo "$HEALTH" | tr '\t' '\n' | grep -c "^healthy$" || true)
+
+            UNHEALTHY_COUNT=$(echo "$HEALTH" | tr '\t' '\n' | grep -c "^unhealthy$" || true)
+
+
+            echo "Healthy targets   : ${HEALTHY_COUNT}"
+            echo "Unhealthy targets : ${UNHEALTHY_COUNT}"
+
+
+            if [ "$HEALTHY_COUNT" -ge 2 ] && [ "$UNHEALTHY_COUNT" -eq 0 ]; then
+
+              echo ""
+              echo "============================================"
+              echo "HEALTH CHECK PASSED"
+              echo "Healthy targets: ${HEALTHY_COUNT}"
+              echo "============================================"
+
               HEALTHY=true
+
               break
+
             fi
 
-            echo "Not healthy yet. Retrying in ${RETRY_INTERVAL}s..."
-            sleep $RETRY_INTERVAL
+
+            echo "Targets are not ready yet."
+            echo "Retrying in ${RETRY_INTERVAL} seconds..."
+
+            sleep "$RETRY_INTERVAL"
+
           done
 
+
           if [ "$HEALTHY" = "false" ]; then
-            echo "health_passed=false" >> $GITHUB_OUTPUT
-            echo "Health checks FAILED after $MAX_RETRIES attempts."
+
+            echo ""
+            echo "============================================"
+            echo "HEALTH CHECK FAILED"
+            echo "Deployment will NOT receive production traffic."
+            echo "============================================"
+
+            echo "health_passed=false" >> "$GITHUB_OUTPUT"
+
             exit 1
+
           fi
 
-          echo "health_passed=true" >> $GITHUB_OUTPUT
+
+          echo "health_passed=true" >> "$GITHUB_OUTPUT"
+
+
+      # --------------------------------------------------------
+      # Switch ALB production traffic
+      # --------------------------------------------------------
 
       - name: Switch ALB traffic to ${{ needs.build.outputs.environment }}
         if: steps.health.outputs.health_passed == 'true'
         run: |
+
           ENV="${{ needs.build.outputs.environment }}"
-          TG_ARN=""
+
+
           if [ "$ENV" = "blue" ]; then
             TG_ARN="${ALB_TG_BLUE_ARN}"
           else
             TG_ARN="${ALB_TG_GREEN_ARN}"
           fi
 
+
+          echo "============================================"
+          echo "Switching production traffic"
+          echo "Environment : ${ENV}"
+          echo "Target Group: ${TG_ARN}"
+          echo "============================================"
+
+
           aws elbv2 modify-listener \
             --listener-arn "$ALB_LISTENER_ARN" \
             --default-actions Type=forward,TargetGroupArn="$TG_ARN"
 
-          echo "Traffic switched to: ${ENV^^}"
+
+          echo ""
+          echo "============================================"
+          echo "TRAFFIC SWITCH COMPLETE"
+          echo "Production traffic is now on ${ENV^^}"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Verify live production endpoint
+      # --------------------------------------------------------
 
       - name: Verify live endpoint
         if: steps.health.outputs.health_passed == 'true'
         run: |
-          echo "Verifying live endpoint..."
-          sleep 5
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/health")
-          echo "HTTP status: $RESPONSE"
-          if [ "$RESPONSE" != "200" ]; then
-            echo "Live endpoint check FAILED (HTTP $RESPONSE)"
-            exit 1
-          fi
-          echo "Live endpoint is healthy."
 
-  # ─────────────────────────────────────────────
-  # JOB 4 — Rollback on failure
-  # ─────────────────────────────────────────────
+          echo "Waiting for ALB traffic to stabilize..."
+
+          sleep 5
+
+
+          echo "Testing production endpoint..."
+
+          RESPONSE=$(curl \
+            -s \
+            -o /dev/null \
+            -w "%{http_code}" \
+            "$APP_URL/health")
+
+
+          echo "HTTP status: ${RESPONSE}"
+
+
+          if [ "$RESPONSE" != "200" ]; then
+
+            echo ""
+            echo "============================================"
+            echo "LIVE ENDPOINT CHECK FAILED"
+            echo "HTTP status: ${RESPONSE}"
+            echo "============================================"
+
+            exit 1
+
+          fi
+
+
+          echo ""
+          echo "============================================"
+          echo "LIVE ENDPOINT HEALTHY"
+          echo "Production traffic successfully validated."
+          echo "============================================"
+
+
+  # ==========================================================
+  # JOB 4 — Automatic rollback
+  # ==========================================================
+
   rollback:
+
     name: Rollback on Failure
+
     runs-on: ubuntu-latest
-    needs: [build, deploy, health-check-and-switch]
+
+    needs:
+      - build
+      - deploy
+      - health-check-and-switch
+
     if: failure()
 
     steps:
+
+      # --------------------------------------------------------
+      # Configure AWS using GitHub OIDC
+      # --------------------------------------------------------
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          role-session-name: GitHubActions-BlueGreen-Rollback
+          aws-region: ${{ env.AWS_REGION }}
+
+
+      # --------------------------------------------------------
+      # Verify AWS authentication
+      # --------------------------------------------------------
+
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+
+      # --------------------------------------------------------
+      # Roll traffic back to BLUE
+      # --------------------------------------------------------
 
       - name: Rollback — switch traffic back to BLUE
         run: |
-          echo "FAILURE DETECTED — Rolling back to BLUE..."
+
+          echo ""
+          echo "============================================"
+          echo "FAILURE DETECTED"
+          echo "Rolling production traffic back to BLUE"
+          echo "============================================"
+
 
           aws elbv2 modify-listener \
             --listener-arn "$ALB_LISTENER_ARN" \
             --default-actions Type=forward,TargetGroupArn="$ALB_TG_BLUE_ARN"
 
-          echo "Traffic rolled back to BLUE successfully."
+
+          echo ""
+          echo "============================================"
+          echo "ROLLBACK COMPLETE"
+          echo "Production traffic is now on BLUE"
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Verify Blue after rollback
+      # --------------------------------------------------------
+
+      - name: Verify BLUE after rollback
+        run: |
+
+          echo "Waiting for rollback traffic to stabilize..."
+
+          sleep 5
+
+
+          RESPONSE=$(curl \
+            -s \
+            -o /dev/null \
+            -w "%{http_code}" \
+            "$APP_URL/health")
+
+
+          echo "BLUE HTTP status: ${RESPONSE}"
+
+
+          if [ "$RESPONSE" != "200" ]; then
+
+            echo ""
+            echo "============================================"
+            echo "BLUE ROLLBACK HEALTH CHECK FAILED"
+            echo "HTTP status: ${RESPONSE}"
+            echo "============================================"
+
+            exit 1
+
+          fi
+
+
+          echo ""
+          echo "============================================"
+          echo "BLUE RECOVERY VERIFIED"
+          echo "Production endpoint is healthy."
+          echo "============================================"
+
+
+      # --------------------------------------------------------
+      # Rollback notification
+      # --------------------------------------------------------
 
       - name: Notify rollback
         run: |
+
           echo "============================================"
           echo "  ROLLBACK COMPLETE"
-          echo "  Failed environment : ${{ needs.build.outputs.environment }}"
-          echo "  Rolled back to     : BLUE"
-          echo "  Commit             : ${{ github.sha }}"
-          echo "  Triggered by       : ${{ github.actor }}"
+          echo "============================================"
+
+          echo "Failed environment : ${{ needs.build.outputs.environment }}"
+          echo "Rolled back to     : BLUE"
+          echo "Commit             : ${{ github.sha }}"
+          echo "Triggered by       : ${{ github.actor }}"
+
           echo "============================================"
